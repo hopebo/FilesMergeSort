@@ -4,17 +4,13 @@
 #include <string>
 #include <queue>
 #include <vector>
-#include <mutex>
-#include <condition_variable>
-#include <atomic>
+
+#include "include/event.h"
+#include "include/file_handler.h"
+
+typedef unsigned int uint;
 
 class Coordinator {
-  struct LevelFiles {
-    std::queue<std::string> files;
-    int k_merge_sort;
-    int num_of_remained_files;
-  };
-
   struct String {
     char *ptr;
     size_t length;
@@ -36,27 +32,40 @@ class Coordinator {
   };
 
  private:
-  int max_threads_;
-  int lowest_active_level_;
-  size_t chunk_size_;
+  std::vector<std::string> files_;
   std::string output_file_;
-  std::mutex mutex_;
+
+  size_t chunk_size_;
+  size_t header_size_;
+  std::vector<FileHandler *> f_handlers_;
+
+  std::queue<uint> p_indexes_;
+  std::mutex indexes_mutex_;
+
+  Event prefetch_;
+  Event chunk_ready_;
+  Event flush_;
+  Event flush_buffer_empty_;
+
+  std::vector<std::string> flush_datas_;
+  std::vector<std::string> sort_datas_;
+  size_t flush_size_;
+
+  std::thread read_thread_;
+  std::thread flush_thread_;
+
+  bool finish_;
 
  public:
-  std::vector<LevelFiles *> level_files_;
-
-  Coordinator(int max_thread, int max_k_merge_sort, size_t chunk_size,
-              std::string output_file, std::vector<std::string>& data_files);
+  Coordinator(size_t chunk_size, size_t header_size, std::string& output_file,
+              std::vector<std::string>& data_files);
+  void ReadThread();
   // When a thread finish current work, it will be assigned the next work.
   void Run();
-  void ProcessLoop();
-  void KMergeSort(std::vector<std::string>& input_files,
-                  std::string& output_files, int next_level_index);
-  ~Coordinator() {
-    for (int i = 0; i < level_files_.size(); i++) {
-      delete level_files_[i];
-    }
-  }
+  void ReadRecord(char **ptr, size_t *length, bool *end_of_records, int index);
+
+  void FlushThread();
+  ~Coordinator();
 };
 
 #endif  // COORDINATOR_H_

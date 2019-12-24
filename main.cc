@@ -8,11 +8,11 @@
 
 #include "include/coordinator.h"
 
-const size_t MAX_K_MERGE_SORT = 4;
-const size_t MAX_PARALLEL_DEGREE = 4;
 // KB
 const size_t CHUNK_SIZE_PER_FILE = 2 * 1024;
 const size_t MEMORY_LIMIT = 15 * 1024 * 1024;
+
+const size_t VALUE_MAX_LENGTH = 20;
 
 /**
    Command line parameters:
@@ -45,12 +45,7 @@ int main(int argc, char **argv) {
     data_files.push_back(input_path + "/" + std::string(entry->d_name));
   }
 
-  // K-way merge sort
-  int k_merge_sort = std::min(MAX_K_MERGE_SORT, MEMORY_LIMIT /
-                              CHUNK_SIZE_PER_FILE / MAX_PARALLEL_DEGREE);
-
-  Coordinator coordinator(MAX_PARALLEL_DEGREE, k_merge_sort,
-                          CHUNK_SIZE_PER_FILE * 1024, output_file, data_files);
+  Coordinator coordinator(CHUNK_SIZE_PER_FILE, VALUE_MAX_LENGTH, output_file, data_files);
 
   coordinator.Run();
 

@@ -44,10 +44,12 @@ TEST(System, Run) {
   }
 
   size_t original_count = 0;
-  for (auto& file : data_files)
-    original_count += CountLines(file.c_str());
+  for (int i = 0; i < data_files.size(); i++) {
+    int count = CountLines(data_files[i].c_str());
+    original_count += count;
+  }
 
-  Coordinator coordinator(4, 4, 1 * 1024 * 1024, output_file, data_files);
+  Coordinator coordinator(1 * 1024 * 1024, 20, output_file, data_files);
 
   coordinator.Run();
 

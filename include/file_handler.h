@@ -6,38 +6,43 @@
 #include <string>
 
 class FileHandler {
- private:
-  std::string file_path_;
-  long long offset_;
-  char *chunk_;
-  char *end_chunk_;
-  char *record_;
-  char *ptr_;
-  size_t chunk_size_;
-  FILE *f_stream_;
-  bool eof_;
+  struct Chunk {
+    char *begin;
+    char *end;
 
-  bool EndOfRecords();
-  void ReadChunk();
+    char *content_begin;
+    char *record;
+    char *records_end;
+    size_t header_size;
+    size_t chunk_size;
+
+    Chunk(size_t chunk, size_t header) :
+        chunk_size(chunk),
+        header_size(header) {
+      begin = new char[chunk_size + header_size];
+      end = begin + chunk_size + header_size;
+      content_begin = begin + header_size;
+    }
+  };
 
  public:
-  FileHandler(std::string file_path, size_t chunk_size) :
-      file_path_(file_path),
-      offset_(0),
-      chunk_(nullptr),
-      end_chunk_(nullptr),
-      record_(nullptr),
-      ptr_(nullptr),
-      chunk_size_(chunk_size),
-      f_stream_(nullptr),
-      eof_(false) {}
+  Chunk *input_;
+  Chunk *prefetch_;
+  bool back_chunk_ready_;
 
-  bool Initialize();
-  void NextRecord(char **ptr, size_t *length, bool *end_of_records);
-  ~FileHandler() {
-    if (f_stream_) fclose(f_stream_);
-    if (chunk_) delete []chunk_;
-  }
+  FILE *f_stream_;
+  long long offset_;
+  bool eof_;
+
+  std::string file_;
+
+  FileHandler(std::string file, size_t chunk_size, size_t header_size);
+
+  void Swap();
+  void ReadChunk(Chunk *chunk);
+  void NextRecord(Chunk *chunk, char **ptr, size_t *length,
+                  bool *end_of_records, bool *need_next_chunk);
+  ~FileHandler();
 };
 
 #endif  // FILE_HANDLER_H_

@@ -3,69 +3,86 @@
 
 #include "include/file_handler.h"
 
-bool FileHandler::Initialize() {
-  f_stream_ = fopen(file_path_.c_str(), "rb");
-  if (f_stream_ == nullptr) return true;
-
-  chunk_ = new char[chunk_size_];
-  end_chunk_ = chunk_ + chunk_size_;
-  record_ = ptr_ = chunk_;
-
-  ReadChunk();
-
-  return false;
+FileHandler::FileHandler(std::string file, size_t chunk_size,
+                         size_t header_size) :
+    offset_(0),
+    eof_(false),
+    file_(file) {
+  input_ = new Chunk(chunk_size, header_size);
+  prefetch_ = new Chunk(chunk_size, header_size);
+  f_stream_ = fopen(file.c_str(), "rb");
+  ReadChunk(input_);
+  input_->record = input_->content_begin;
 }
 
-bool FileHandler::EndOfRecords() {
-  while (record_ < ptr_ && *record_ == '\n') record_++;
-
-  if (record_ >= end_chunk_) {
-    record_ = ptr_ = chunk_;
-    ReadChunk();
-    return eof_ || EndOfRecords();
-  }
-
-  return record_ >= ptr_;
-}
-
-// TODO: What if the length of single value is bigger than the size of chunk.
-void FileHandler::NextRecord(char **ptr, size_t *length, bool *end_of_records) {
-  if (EndOfRecords()) {
-    *end_of_records = true;
-    return;
-  }
-
-  char *end_of_record = record_;
-  while (end_of_record < end_chunk_ && *end_of_record != '\n') end_of_record++;
-
-  if (end_of_record < end_chunk_ || eof_) {
-    *ptr = record_;
-    *length = end_of_record - record_;
-    record_ = end_of_record + 1;
-    *end_of_records = false;
+void FileHandler::Swap() {
+  if (input_->record < input_->records_end) {
+    size_t size = input_->records_end - input_->record;
+    prefetch_->record = prefetch_->content_begin - size;
+    strncpy(prefetch_->record, input_->record, size);
   } else {
-    strncpy(chunk_, record_, end_chunk_ - record_);
-    ptr_ = chunk_ + (end_chunk_ - record_);
-    record_ = chunk_;
-
-    // Read the following data
-    ReadChunk();
-
-    NextRecord(ptr, length, end_of_records);
+    prefetch_->record = prefetch_->content_begin;
   }
+
+  Chunk *temp = prefetch_;
+  prefetch_ = input_;
+  input_ = temp;
+
+  back_chunk_ready_ = false;
 }
 
-void FileHandler::ReadChunk() {
+void FileHandler::ReadChunk(Chunk *chunk) {
   if (feof(f_stream_)) {
     eof_ = true;
     return;
   }
 
-  size_t read_bytes = fread(ptr_, sizeof(char), chunk_size_ - (ptr_ - chunk_),
-                            f_stream_);
+  size_t read_bytes = fread(chunk->content_begin, sizeof(char),
+                            chunk->chunk_size, f_stream_);
 
-  ptr_ += read_bytes;
+  chunk->records_end = chunk->content_begin + read_bytes;
 
-  offset_ += read_bytes;
-  fseeko(f_stream_, offset_, SEEK_SET);
+  if (read_bytes < chunk->chunk_size) {
+    eof_ = true;
+  } else {
+    offset_ += read_bytes;
+    fseeko(f_stream_, offset_, SEEK_SET);
+  }
+  if (chunk == prefetch_)
+    back_chunk_ready_ = true;
+}
+
+void FileHandler::NextRecord(Chunk *chunk, char **ptr, size_t *length,
+                             bool *end_of_records, bool *need_next_chunk) {
+  *end_of_records = false;
+  *need_next_chunk = false;
+
+  while (chunk->record < chunk->records_end && *chunk->record == '\n')
+    chunk->record++;
+
+  if (chunk->record >= chunk->records_end) {
+    if (eof_ && !back_chunk_ready_) {
+      *end_of_records = true;
+    } else {
+      *need_next_chunk = true;
+    }
+    return;
+  }
+
+  char *end_of_record = chunk->record;
+  while (end_of_record < chunk->records_end && *end_of_record != '\n')
+    end_of_record++;
+
+  if (end_of_record < chunk->records_end || (eof_ && !back_chunk_ready_)) {
+    *ptr = chunk->record;
+    *length = end_of_record - chunk->record;
+    chunk->record = end_of_record + 1;
+  } else {
+    *need_next_chunk = true;
+  }
+}
+
+FileHandler::~FileHandler() {
+  delete []input_->begin;
+  delete []prefetch_->begin;
 }
